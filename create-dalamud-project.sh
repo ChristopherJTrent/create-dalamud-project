@@ -14,11 +14,30 @@ echoHelp () {
 }
 
 setProjectName () {
-    PROJECT_NAME=$2
+    PROJECT_NAME=$1
+    echo $PROJECT_NAME
     CONTINUE=1
 }
 
-while getopts h:-help:d:-dalamud:n:-name: flag 
+cleanupSetup () {
+    echo "KSP:$KEEPSAMPLEPROJECT, EC:$EXIT_CODE, FCU:$FORCECLEANUP"
+    if [ $KEEPSAMPLEPROJECT -a !$FORCECLEANUP ]; then
+        echo "Keeping sample project for future runs. "
+    else
+        FORCECLEANUP=1
+    fi
+    if [ $FORCECLEANUP ]; then
+        echo "Removing unused setup files."
+        rm -rf ./SamplePlugin
+    fi
+    if [ $EXIT_CODE ]; then 
+        exit $EXIT_CODE
+    else 
+        exit 0
+    fi
+}
+
+while getopts h:-help:d:-dalamud:n:-name:k:c: flag 
 do
     case "${flag}" in
         h) echoHelp;;
@@ -27,11 +46,13 @@ do
         -dalamud) setXLLocation ${OPTARG};;
         n) setProjectName ${OPTARG};;
         -name) setProjectName ${OPTARG};;
+        k) KEEPSAMPLEPROJECT=1;;
+        c) FORCECLEANUP=1;;
     esac
 done
 
 if [ $CONTINUE ]; then
-    dependencies=( dotnet code wget );
+    dependencies=( dotnet code wget git );
     location="";
 
     for name in ${dependencies[@]}; do
@@ -42,8 +63,8 @@ if [ $CONTINUE ]; then
             missingDependencies=1;
         fi
     done
-    if [ $missingDependencies > 0 ]; then
-        echo "check above output.";
+    if [ $missingDependencies ]; then
+        echo "check above output for missing dependencies.";
         exit 1
     else 
         if [ $XLINSTALLDIR ]; then
@@ -74,6 +95,34 @@ if [ $CONTINUE ]; then
             XLINSTALLDIR=~/.xlcore/dalamud/Hooks/dev;
         else
             echo "Could not find XL installation location, please provide one using the -d flag."
+            #exit 1
         fi
+    fi
+    if [ -d "./SamplePlugin" ]; then
+        echo "Using existing sample project at ./SamplePlugin"
+        git -C ./SamplePlugin status -uno | grep -q "behind" && changes=1
+        if [ $changes ]; then
+            echo "Your branch is out of date. Would you like to update it? [Y/n]:"
+            read response
+            case $response in
+            n) echo "Using out-of-date Sample Plugin." ;;
+            no) echo "Using out-of-date Sample Plugin." ;;
+            *) git -C ./SamplePlugin pull;
+            git -C ./SamplePlugin restore *;;
+            esac
+        else 
+            echo "Sample Project is up-to-date"
+        fi
+        KEEPSAMPLEPROJECT=1
+    else 
+        echo "Cloning sample project into temporary directory, pass -k to keep the sample project."
+        git clone https://github.com/goatcorp/SamplePlugin.git
+    fi    
+    if [ -d ./$PROJECT_NAME ]; then
+        echo "Project files already exist, aborting..."
+        EXIT_CODE=1
+        cleanupSetup
+    else 
+        mkdir "$PROJECT_NAME"
     fi
 fi
